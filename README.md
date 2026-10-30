@@ -47,22 +47,24 @@ POOL_SERVICE=duco-pool.service \
 [duco-dashboard.service](duco-dashboard.service) is an example systemd unit. Edit
 its paths and user before installing it. The dashboard does not change the pool's
 bind address or firewall rules. Keep the original keyed API protected: it exposes
-more worker information than this dashboard. The dashboard's `/statistics` and
-`/workers` endpoints are intentionally public and read-only; they omit worker IPs,
-wallet IDs, chip IDs, IoT readings and mining passwords.
+more worker information than this dashboard. The dashboard's `/statistics`,
+`/workers` and `/rewards` endpoints are intentionally public and read-only; they
+omit worker IPs, wallet IDs, chip IDs, IoT readings and mining passwords.
 
 ## Data and limitations
 
 - Share counters and acceptance rate describe currently connected workers; they
   can decrease when workers reconnect. Empty share totals show an unavailable rate.
-- Pending reward balances are not exposed by `/data` and are labelled unavailable.
+- Pending rewards come from `miner_stats[CONN_ID].rw`. `/rewards` sums these
+  balances by username; the leaderboard displays each user's pending DUCO and
+  the summary shows the total across connected workers.
 - CPU, RAM and temperature are sampled on the dashboard host. Uptime is read from
   a local process named `duco-pool-rs`; run one pool instance per host for this
   lookup. Missing process/sensor readings show as unavailable.
 - Sync status requires `journalctl`, `POOL_SERVICE` and permission to read that
   unit's logs. Missing status is shown as unavailable.
-- `/statistics` and `/workers` return HTTP 503 when the last successful pool poll
-  is more than 20 seconds old. Pool API response bodies and on-disk JSON inputs
+- `/statistics`, `/workers` and `/rewards` return HTTP 503 when the last
+  successful pool poll is more than 20 seconds old. Pool API response bodies and on-disk JSON inputs
   are capped at 16 MiB. History retains at most 20,000 points from the last day.
 - History survives dashboard restarts. Corrupt history fails startup with an
   error; preserve or remove the file before retrying. Failed history writes are

@@ -65,7 +65,7 @@ fn public_workers(raw: &Value) -> Vec<Value> {
                 "username":w["u"], "hashrate":number(w,"h"), "sharetime":w["s"],
                 "accepted":number(w,"a"), "rejected":number(w,"r"), "difficulty":w["d"],
                 "miner":w["sft"], "rig":w["id"], "lastSeen":number(w,"t")*1000.,
-                "ping":w["pg"]
+                "ping":w["pg"], "reward":number(w,"rw")
             })
         })
         .collect()
@@ -103,6 +103,22 @@ async fn workers(State(app): State<Shared>) -> ApiResult {
         ));
     }
     Ok(Json(json!(s.workers)))
+}
+async fn rewards(State(app): State<Shared>) -> ApiResult {
+    let s = app.snapshot.read().await;
+    if now().saturating_sub(s.updated) > MAX_SNAPSHOT_AGE_MS {
+        return Err((
+            StatusCode::SERVICE_UNAVAILABLE,
+            "Pool reward data is unavailable or stale",
+        ));
+    }
+    let mut totals = std::collections::HashMap::<String, f64>::new();
+    for worker in &s.workers {
+        if let Some(username) = worker["username"].as_str() {
+            *totals.entry(username.to_owned()).or_default() += number(worker, "reward");
+        }
+    }
+    Ok(Json(json!(totals)))
 }
 async fn poll(app: Shared, config: Value, history_path: PathBuf, service: Option<String>) {
     let client = reqwest::Client::builder()
@@ -264,15 +280,7 @@ async fn main() -> anyhow::Result<()> {
     let router = Router::new()
         .route("/statistics", get(statistics))
         .route("/workers", get(workers))
-        .route(
-            "/rewards",
-            get(|| async {
-                (
-                    StatusCode::NOT_IMPLEMENTED,
-                    "The pool API does not expose pending reward balances",
-                )
-            }),
-        )
+        .route("/rewards", get(rewards))
         .route(
             "/ping",
             get(|| async { Json(json!({"success":true,"result":"Pong!"})) }),
@@ -321,6 +329,30 @@ async fn main() -> anyhow::Result<()> {
 #[cfg(test)]
 mod tests {
     use super::*;
+    #[tokio::test]
+    async fn pending_rewards_sum_workers_by_username_and_reject_stale_data() {
+        let raw = json!({"miner_stats":{
+            "one":{"u":"alice","rw":1.25},
+            "two":{"u":"alice","rw":2.5},
+            "three":{"u":"bob","rw":0.5},
+            "four":{"u":"carol"}
+        }});
+        let app = Arc::new(App {
+            snapshot: RwLock::new(Snapshot {
+                workers: public_workers(&raw),
+                updated: now(),
+                ..Snapshot::default()
+            }),
+            history: RwLock::new(Vec::new()),
+        });
+        let Json(totals) = rewards(State(app.clone())).await.unwrap();
+        assert_eq!(totals, json!({"alice":3.75,"bob":0.5,"carol":0.0}));
+        app.snapshot.write().await.updated = 0;
+        assert_eq!(
+            rewards(State(app)).await.unwrap_err().0,
+            StatusCode::SERVICE_UNAVAILABLE
+        );
+    }
     #[test]
     fn worker_adapter_whitelists_fields_and_converts_timestamps() {
         let raw = json!({"miner_stats":{"one":{"u":"alice","h":1234,"a":12,"r":1,"t":100,"ip":"private","k":"secret","pw":"secret"}}});

@@ -440,6 +440,25 @@ function renderLeaderboard() {
     els.leaderboard.replaceChildren(frag);
 }
 
+function fetchRewards() {
+    fetch("/rewards")
+        .then((r) => {
+            if (!r.ok) throw new Error(`HTTP ${r.status}`);
+            return r.json();
+        })
+        .then((rewards) => {
+            state.rewards = rewards;
+            const total = Object.values(rewards).reduce((sum, value) => sum + value, 0);
+            els.rewardsSummary.textContent = `${formatDuco(total)} DUCO pending`;
+            renderLeaderboard();
+        })
+        .catch(() => {
+            state.rewards = {};
+            els.rewardsSummary.textContent = "Pending rewards unavailable";
+            renderLeaderboard();
+        });
+}
+
 function fetchWorkers() {
     fetch("/workers")
         .then((r) => {
@@ -498,7 +517,8 @@ $("theme-toggle").addEventListener("click", () => {
 initCharts();
 fetchStatistics();
 fetchWorkers();
-els.rewardsSummary.textContent = "Pending rewards are not exposed by duco-pool-rs";
+fetchRewards();
 
 setInterval(fetchStatistics, 5000);
 setInterval(fetchWorkers, 15000);
+setInterval(fetchRewards, 15000);
