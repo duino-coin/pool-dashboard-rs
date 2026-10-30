@@ -565,6 +565,7 @@ mod tests {
             stats: json!({"workers":1}),
             workers: vec![json!({"username":"alice"})],
             updated: now(),
+            ..Snapshot::default()
         };
         assert_eq!(
             workers(State(app.clone())).await.unwrap().0[0]["username"],
