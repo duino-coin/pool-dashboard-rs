@@ -6,10 +6,6 @@ rust-version = "1.99"
 license = "AGPL-3.0-only"
 description = "Read-only dashboard for the duco-pool-rs data API"
 
-[[bin]]
-name = "duco-pool-dashboard"
-path = "main.rs"
-
 [dependencies]
 anyhow = "1"
 axum = "0.8"

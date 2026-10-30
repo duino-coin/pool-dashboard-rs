@@ -248,7 +248,7 @@ async fn main() -> anyhow::Result<()> {
     let bind = std::env::var("DASHBOARD_BIND").unwrap_or_else(|_| "127.0.0.1:6031".into());
     let history_path = std::env::var_os("DASHBOARD_HISTORY")
         .map(PathBuf::from)
-        .unwrap_or_else(|| "src/dashboard/history.json".into());
+        .unwrap_or_else(|| "dashboard-rs/history.json".into());
     let history = if history_path.exists() {
         anyhow::ensure!(
             std::fs::metadata(&history_path)?.len() <= MAX_JSON_BYTES as u64,
@@ -287,14 +287,14 @@ async fn main() -> anyhow::Result<()> {
         )
         .route(
             "/",
-            get(|| async { Html(include_str!("assets/index.html")) }),
+            get(|| async { Html(include_str!("../assets/index.html")) }),
         )
         .route(
             "/styles.css",
             get(|| async {
                 (
                     [("content-type", "text/css")],
-                    include_str!("assets/styles.css"),
+                    include_str!("../assets/styles.css"),
                 )
             }),
         )
@@ -303,7 +303,7 @@ async fn main() -> anyhow::Result<()> {
             get(|| async {
                 (
                     [("content-type", "text/javascript")],
-                    include_str!("assets/script.js"),
+                    include_str!("../assets/script.js"),
                 )
             }),
         )
@@ -312,7 +312,7 @@ async fn main() -> anyhow::Result<()> {
             get(|| async {
                 (
                     [("content-type", "text/javascript")],
-                    include_str!("assets/vendor/chart.umd.min.js"),
+                    include_str!("../assets/vendor/chart.umd.min.js"),
                 )
             }),
         )

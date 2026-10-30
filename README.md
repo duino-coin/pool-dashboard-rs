@@ -15,8 +15,8 @@ configuration. Never paste the key into frontend code or a public URL.
 From the repository root:
 
 ```sh
-cargo build --release --locked --manifest-path src/dashboard/Cargo.toml
-./src/dashboard/target/release/duco-pool-dashboard
+cargo build --release --locked --manifest-path dashboard-rs/Cargo.toml
+./dashboard-rs/target/release/duco-pool-dashboard
 ```
 
 Open <http://127.0.0.1:6031>. The dashboard polls the pool's configured
@@ -30,7 +30,7 @@ Settings use environment variables:
 | --- | --- | --- |
 | `POOL_CONFIG` | `config/config.json` | Pool configuration containing the API port and secret |
 | `DASHBOARD_BIND` | `127.0.0.1:6031` | Dashboard listen address; use `0.0.0.0:6030` for LAN access on port 6030 |
-| `DASHBOARD_HISTORY` | `src/dashboard/history.json` | History file; its parent directory must exist and be writable |
+| `DASHBOARD_HISTORY` | `dashboard-rs/history.json` | History file; its parent directory must exist and be writable |
 | `POOL_SERVICE` | unset | Optional systemd unit name for successful-sync status |
 
 For example, to preserve an existing dashboard on port 6030, change the pool's
@@ -41,7 +41,7 @@ POOL_CONFIG=/path/to/pool/config/config.json \
 DASHBOARD_BIND=0.0.0.0:6030 \
 DASHBOARD_HISTORY=/path/to/state/history.json \
 POOL_SERVICE=duco-pool.service \
-./src/dashboard/target/release/duco-pool-dashboard
+./dashboard-rs/target/release/duco-pool-dashboard
 ```
 
 [duco-dashboard.service](duco-dashboard.service) is an example systemd unit. Edit
@@ -73,10 +73,10 @@ omit worker IPs, wallet IDs, chip IDs, IoT readings and mining passwords.
 ## Checks
 
 ```sh
-(cd src/dashboard && typos)
-cargo fmt --check --manifest-path src/dashboard/Cargo.toml
-cargo test --locked --manifest-path src/dashboard/Cargo.toml
-cargo clippy --release --locked --all-targets --manifest-path src/dashboard/Cargo.toml -- -D warnings
+(cd dashboard-rs && typos)
+cargo fmt --check --manifest-path dashboard-rs/Cargo.toml
+cargo test --locked --manifest-path dashboard-rs/Cargo.toml
+cargo clippy --release --locked --all-targets --manifest-path dashboard-rs/Cargo.toml -- -D warnings
 ```
 
 Chart.js 4.4.1 is bundled under its [MIT license](assets/vendor/LICENSE.chartjs.md).
