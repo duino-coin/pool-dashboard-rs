@@ -1,0 +1,19 @@
+[package]
+name = "duco-pool-dashboard"
+version = "0.1.0"
+edition = "2021"
+rust-version = "1.99"
+license = "AGPL-3.0-only"
+description = "Read-only dashboard for the duco-pool-rs data API"
+
+[[bin]]
+name = "duco-pool-dashboard"
+path = "main.rs"
+
+[dependencies]
+anyhow = "1"
+axum = "0.8"
+reqwest = { version = "0.12", default-features = false, features = ["json"] }
+serde_json = "1"
+sysinfo = "0.33"
+tokio = { version = "1", features = ["full"] }

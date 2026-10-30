@@ -1,0 +1,3 @@
+/target/
+/history*.json
+*.json.tmp

@@ -1,0 +1,178 @@
+<!DOCTYPE html>
+<html lang="en">
+
+<head>
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Pool Dashboard</title>
+    <script>
+        document.documentElement.dataset.theme =
+            localStorage.getItem("theme") || "dark";
+    </script>
+    <link rel="stylesheet" href="/styles.css">
+    <script src="/vendor/chart.umd.min.js" defer></script>
+    <script src="/script.js?v=duco-adapter-1" defer></script>
+</head>
+
+<body>
+    <header class="topbar">
+        <div class="brand">
+            <span class="status-dot" id="status-dot" title="Pool status"></span>
+            <div>
+                <h1 id="pool-name">Duino-Coin Pool</h1>
+                <p class="motd" id="pool-motd">a Duino-Coin mining node</p>
+            </div>
+        </div>
+        <div class="topbar-meta">
+            <span class="pill" id="pool-port" title="Mining port">port —</span>
+            <span class="pill" id="uptime" title="Pool uptime">up —</span>
+            <button class="theme-toggle" id="theme-toggle" aria-label="Toggle light/dark theme">
+                <svg class="icon-moon" viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 12.79A9 9 0 1 1 11.21 3 7 7 0 0 0 21 12.79z"/></svg>
+                <svg class="icon-sun" viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="5"/><path d="M12 1v2M12 21v2M4.22 4.22l1.42 1.42M18.36 18.36l1.42 1.42M1 12h2M21 12h2M4.22 19.78l1.42-1.42M18.36 5.64l1.42-1.42"/></svg>
+            </button>
+        </div>
+    </header>
+
+    <main>
+        <p class="error-line" id="stats-error" hidden></p>
+
+        <section class="tiles">
+            <div class="tile tile-hero">
+                <p class="tile-label">Pool hashrate</p>
+                <p class="tile-value hero-value" id="hashrate">—</p>
+                <p class="tile-sub" id="hashrate-sub">&nbsp;</p>
+            </div>
+            <div class="tile">
+                <p class="tile-label">Connections</p>
+                <p class="tile-value" id="connections">—</p>
+            </div>
+            <div class="tile">
+                <p class="tile-label">Workers</p>
+                <p class="tile-value" id="workers">—</p>
+            </div>
+            <div class="tile">
+                <p class="tile-label">Users</p>
+                <p class="tile-value" id="users">—</p>
+            </div>
+            <div class="tile">
+                <p class="tile-label">Accept rate</p>
+                <p class="tile-value" id="accept-rate">—</p>
+                <p class="tile-sub" id="shares-sub">&nbsp;</p>
+            </div>
+            <div class="tile">
+                <p class="tile-label">CPU</p>
+                <p class="tile-value" id="cpu">—</p>
+            </div>
+            <div class="tile">
+                <p class="tile-label">CPU temp</p>
+                <p class="tile-value" id="cpu-temp">—</p>
+            </div>
+            <div class="tile">
+                <p class="tile-label">RAM</p>
+                <p class="tile-value" id="ram">—</p>
+            </div>
+        </section>
+
+        <section class="filter-row">
+            <div class="range-buttons" role="group" aria-label="History range">
+                <button class="range-btn" data-range="1800000">30 min</button>
+                <button class="range-btn" data-range="3600000">1 hour</button>
+                <button class="range-btn is-selected" data-range="">All</button>
+            </div>
+            <p class="filter-meta">
+                <span id="history-range">—</span>
+                · <span id="sync-info">—</span>
+                · <span id="last-updated">loading…</span>
+            </p>
+        </section>
+
+        <section class="charts">
+            <div class="card">
+                <h2 class="card-title">Hashrate</h2>
+                <div class="chart-container"><canvas id="hashrate-chart"></canvas></div>
+            </div>
+            <div class="card">
+                <h2 class="card-title">Connections &amp; workers</h2>
+                <div class="chart-container"><canvas id="conn-chart"></canvas></div>
+            </div>
+            <div class="card">
+                <h2 class="card-title">CPU, RAM &amp; temperature</h2>
+                <div class="chart-container"><canvas id="system-chart"></canvas></div>
+            </div>
+        </section>
+
+        <section class="card">
+            <div class="card-head">
+                <h2 class="card-title">Top miners</h2>
+                <p class="card-meta" id="rewards-summary">—</p>
+            </div>
+            <div class="table-scroll">
+                <table>
+                    <thead>
+                        <tr>
+                            <th class="num">#</th>
+                            <th>User</th>
+                            <th class="num">Rigs</th>
+                            <th class="num">Hashrate</th>
+                            <th class="num">Accept</th>
+                            <th class="num" title="Pending balances are not exposed by duco-pool-rs">Pending DUCO · unavailable</th>
+                        </tr>
+                    </thead>
+                    <tbody id="leaderboard-table"></tbody>
+                </table>
+            </div>
+            <p class="card-hint">Click a user to see their workers below.</p>
+        </section>
+
+        <section class="card" id="workers-card">
+            <div class="card-head">
+                <h2 class="card-title">Workers</h2>
+                <p class="card-meta" id="workers-count">—</p>
+            </div>
+            <div class="workers-toolbar">
+                <div class="search-wrap">
+                    <svg viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><circle cx="11" cy="11" r="8"/><path d="m21 21-4.35-4.35"/></svg>
+                    <input type="search" id="worker-search" placeholder="Search user, miner, or rig…">
+                </div>
+                <select id="worker-sort" aria-label="Sort workers">
+                    <option value="hashrate:desc">Hashrate (high to low)</option>
+                    <option value="hashrate:asc">Hashrate (low to high)</option>
+                    <option value="username:asc">Username (A–Z)</option>
+                    <option value="username:desc">Username (Z–A)</option>
+                    <option value="accepted:desc">Most accepted</option>
+                    <option value="rejected:desc">Most rejected</option>
+                </select>
+            </div>
+            <p class="error-line" id="workers-error" hidden></p>
+            <div class="table-scroll table-scroll-tall">
+                <table>
+                    <thead>
+                        <tr>
+                            <th>User</th>
+                            <th class="num">Hashrate</th>
+                            <th>Miner</th>
+                            <th>Rig</th>
+                            <th class="num">Diff</th>
+                            <th class="num">Ping</th>
+                            <th class="num">OK</th>
+                            <th class="num">Bad</th>
+                        </tr>
+                    </thead>
+                    <tbody id="workers-table"></tbody>
+                </table>
+            </div>
+        </section>
+    </main>
+
+    <footer>
+        <p>
+            Duino-Coin pool dashboard ·
+            <a href="https://duinocoin.com">duinocoin.com</a> ·
+            <a href="/workers">workers.json</a> ·
+            <span title="The pool API does not expose pending reward balances">rewards unavailable</span> ·
+            <a href="/ping">ping</a>
+        </p>
+    </footer>
+</body>
+
+</html>
