@@ -6,12 +6,20 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Pool Dashboard</title>
     <script>
-        document.documentElement.dataset.theme =
-            localStorage.getItem("theme") || "dark";
+        {
+            let theme = null;
+            try {
+                theme = localStorage.getItem("theme");
+            } catch (e) {
+                // storage blocked (private mode, disabled cookies); the default is used
+            }
+            document.documentElement.dataset.theme = theme || "dark";
+        }
     </script>
-    <link rel="stylesheet" href="/styles.css">
-    <script src="/vendor/chart.umd.min.js" defer></script>
-    <script src="/script.js?v=duco-adapter-1" defer></script>
+    <!-- the server fills in a hash of the assets; they can be cached long-term -->
+    <link rel="stylesheet" href="/styles.css?v={{ASSET_VERSION}}">
+    <script src="/vendor/chart.umd.min.js?v={{ASSET_VERSION}}" defer></script>
+    <script src="/script.js?v={{ASSET_VERSION}}" defer></script>
 </head>
 
 <body>

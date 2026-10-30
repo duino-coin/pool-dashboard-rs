@@ -295,8 +295,22 @@ function updateCharts() {
 
 /* ---------- statistics ---------- */
 
+const HISTORY_AGE_MS = 86_400_000;
+
+// the full day of history is fetched once; later polls ask only for newer points
+function mergeHistory(points) {
+    const last = state.history.length ? state.history[state.history.length - 1].t : 0;
+    // overlapping slow polls can return the same points twice
+    for (const p of points) if (p.t > last) state.history.push(p);
+    if (!state.history.length) return;
+    const cutoff = state.history[state.history.length - 1].t - HISTORY_AGE_MS;
+    const firstKept = state.history.findIndex((p) => p.t >= cutoff);
+    if (firstKept > 0) state.history.splice(0, firstKept);
+}
+
 function fetchStatistics() {
-    fetch("/statistics", { cache: "no-store" })
+    const since = state.history.length ? state.history[state.history.length - 1].t : 0;
+    fetch(`/statistics?since=${since}`, { cache: "no-store" })
         .then((r) => {
             if (!r.ok) throw new Error(`HTTP ${r.status}`);
             return r.json();
@@ -331,7 +345,7 @@ function fetchStatistics() {
                 : "sync status unavailable";
             els.lastUpdated.textContent = "updated " + new Date().toLocaleTimeString();
 
-            state.history = data.history || [];
+            mergeHistory(data.history || []);
             state.historyMeta = data.historyMeta;
             updateCharts();
         })
@@ -506,7 +520,11 @@ for (const btn of document.querySelectorAll(".range-btn")) {
 $("theme-toggle").addEventListener("click", () => {
     const next = document.documentElement.dataset.theme === "dark" ? "light" : "dark";
     document.documentElement.dataset.theme = next;
-    localStorage.setItem("theme", next);
+    try {
+        localStorage.setItem("theme", next);
+    } catch (e) {
+        // storage blocked; the theme still switches for this page view
+    }
     destroyCharts();
     initCharts();
     updateCharts();

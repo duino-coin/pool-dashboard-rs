@@ -22,7 +22,9 @@ cargo build --release --locked --manifest-path dashboard-rs/Cargo.toml
 Open <http://127.0.0.1:6031>. The dashboard polls the pool's configured
 `dashboard_port` on loopback every five seconds. The dashboard and the pool API
 must listen on different ports. The pool API must accept loopback connections.
-Static assets are embedded in the dashboard executable.
+Static assets are embedded in the dashboard executable and cached by browsers
+until the dashboard is rebuilt; responses are gzip-compressed when the browser
+accepts it.
 
 Settings use environment variables:
 
@@ -30,7 +32,7 @@ Settings use environment variables:
 | --- | --- | --- |
 | `POOL_CONFIG` | `config/config.json` | Pool configuration containing the API port and secret |
 | `DASHBOARD_BIND` | `127.0.0.1:6031` | Dashboard listen address; use `0.0.0.0:6030` for LAN access on port 6030 |
-| `DASHBOARD_HISTORY` | `dashboard-rs/history.json` | History file; its parent directory must exist and be writable |
+| `DASHBOARD_HISTORY` | `dashboard-history.json` next to `POOL_CONFIG` | History file; its parent directory must exist and be writable |
 | `POOL_SERVICE` | unset | Optional systemd unit name for successful-sync status |
 
 For example, to preserve an existing dashboard on port 6030, change the pool's
@@ -60,15 +62,24 @@ omit worker IPs, wallet IDs, chip IDs, IoT readings and mining passwords.
   the summary shows the total across connected workers.
 - CPU, RAM and temperature are sampled on the dashboard host. Uptime is read from
   a local process named `duco-pool-rs`; run one pool instance per host for this
-  lookup. Missing process/sensor readings show as unavailable.
+  lookup. The process is found once and then tracked by PID; the process list is
+  only rescanned when that PID exits. Missing process/sensor readings show as
+  unavailable.
 - Sync status requires `journalctl`, `POOL_SERVICE` and permission to read that
   unit's logs. Missing status is shown as unavailable.
 - `/statistics`, `/workers` and `/rewards` return HTTP 503 when the last
-  successful pool poll is more than 20 seconds old. Pool API response bodies and on-disk JSON inputs
-  are capped at 16 MiB. History retains at most 20,000 points from the last day.
-- History survives dashboard restarts. Corrupt history fails startup with an
-  error; preserve or remove the file before retrying. Failed history writes are
-  logged while live polling continues.
+  successful pool poll is more than 20 seconds old. Pool API response bodies and
+  on-disk JSON inputs are capped at 16 MiB. History retains at most 20,000 points
+  from the last day.
+- History survives dashboard restarts. It is saved once a minute and on a clean
+  shutdown, so a crash loses at most the last minute. An unreadable, corrupt or
+  oversized history file is renamed to `*.json.bad` and the dashboard starts with
+  empty history. Failed history writes are logged while live polling continues.
+- If the system clock steps backwards, new history points are skipped until it
+  passes the last recorded point, so the history stays in time order.
+- `/statistics?since=<ms>` returns only history points newer than `since`; the
+  page fetches the full day once, then just new points. Without `since` the
+  full history is returned.
 
 ## Checks
 
