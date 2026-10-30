@@ -89,6 +89,29 @@ fn now() -> u64 {
 fn number(v: &Value, key: &str) -> f64 {
     v[key].as_f64().filter(|x| x.is_finite()).unwrap_or(0.)
 }
+/// free-text worker fields as strings, so the frontend can search them; numbers are
+/// stringified and anything else becomes null
+fn text(v: &Value, key: &str) -> Value {
+    match &v[key] {
+        Value::String(_) => v[key].clone(),
+        Value::Number(n) => n.to_string().into(),
+        _ => Value::Null,
+    }
+}
+/// per-user pending DUCO; `None` when the pool does not publish `balances`, so
+/// `/rewards` reports them unavailable instead of an empty (all zero) map
+fn pending_rewards(raw: &Value) -> Option<Value> {
+    let balances = raw.get("balances")?.as_object()?;
+    Some(
+        balances
+            .iter()
+            .filter_map(|(user, v)| {
+                Some((user.clone(), json!(v.as_f64().filter(|x| x.is_finite())?)))
+            })
+            .collect::<serde_json::Map<_, _>>()
+            .into(),
+    )
+}
 fn public_workers(raw: &Value) -> Vec<Value> {
     raw["miner_stats"]
         .as_object()
@@ -98,7 +121,7 @@ fn public_workers(raw: &Value) -> Vec<Value> {
             json!({
                 "username":w["u"], "hashrate":number(w,"h"), "sharetime":w["s"],
                 "accepted":number(w,"a"), "rejected":number(w,"r"), "difficulty":w["d"],
-                "miner":w["sft"], "rig":w["id"], "lastSeen":number(w,"t")*1000.,
+                "miner":text(w,"sft"), "rig":text(w,"id"), "lastSeen":number(w,"t")*1000.,
                 "ping":w["pg"]
             })
         })
@@ -113,8 +136,9 @@ struct Point {
     hashrate: f64,
     connections: u64,
     workers: usize,
-    cpu: f32,
-    ram: f64,
+    // optional: a non-finite reading is saved as null, which a plain float could not load back
+    cpu: Option<f32>,
+    ram: Option<f64>,
     cpu_temp: Option<f64>,
 }
 /// drops points older than a day, then the oldest beyond the point cap;
@@ -165,7 +189,7 @@ fn load_history(path: &Path) -> VecDeque<Point> {
 struct Snapshot {
     stats: Value,
     workers: Vec<Value>,
-    rewards: Value,
+    rewards: Option<Value>,
     updated: u64,
 }
 struct App {
@@ -229,12 +253,15 @@ async fn rewards(State(app): State<Shared>) -> ApiResult {
             "Pool reward data is unavailable or stale",
         ));
     }
-    Ok(Json(s.rewards.clone()))
+    s.rewards.clone().map(Json).ok_or((
+        StatusCode::SERVICE_UNAVAILABLE,
+        "Pool does not publish pending rewards",
+    ))
 }
 
 struct HostMetrics {
-    cpu: f32,
-    ram: f64,
+    cpu: Option<f32>,
+    ram: Option<f64>,
     temp: Option<f64>,
     uptime: Option<u64>,
 }
@@ -279,8 +306,11 @@ impl HostMonitor {
                 .map(|p| p.pid());
         }
         HostMetrics {
-            cpu: self.system.global_cpu_usage(),
-            ram: 100. * self.system.used_memory() as f64 / self.system.total_memory().max(1) as f64,
+            cpu: Some(self.system.global_cpu_usage()).filter(|x| x.is_finite()),
+            ram: Some(
+                100. * self.system.used_memory() as f64 / self.system.total_memory().max(1) as f64,
+            )
+            .filter(|x| x.is_finite()),
             temp: temperature::cpu_temperature(),
             uptime: self
                 .pool_pid
@@ -319,11 +349,7 @@ async fn poll(app: Shared, config: Value, history_path: PathBuf) {
         let rows = public_workers(&raw);
         let metrics = host.sample();
         // pools without these fields predate them; shown as unavailable
-        let rewards = raw
-            .get("balances")
-            .filter(|b| b.is_object())
-            .cloned()
-            .unwrap_or_else(|| json!({}));
+        let rewards = pending_rewards(&raw);
         // unix secs, 0 until the pool's first accepted sync
         let last_sync_time = raw["last_sync_time"].as_u64().filter(|&t| t > 0);
         let accepted: f64 = rows.iter().map(|w| number(w, "accepted")).sum();
@@ -348,7 +374,6 @@ async fn poll(app: Shared, config: Value, history_path: PathBuf) {
             "ram": metrics.ram,
             "cpuTemp": metrics.temp,
             "uptime": metrics.uptime,
-            "syncCount": last_sync_time.and(raw["last_sync_count"].as_u64()),
             "lastSyncAt": last_sync_time.map(|t| t * 1000),
         });
         record_point(
@@ -453,10 +478,44 @@ mod tests {
             hashrate: 0.,
             connections: 0,
             workers: 0,
-            cpu: 0.,
-            ram: 0.,
+            cpu: Some(0.),
+            ram: Some(0.),
             cpu_temp: None,
         }
+    }
+    #[test]
+    fn worker_text_fields_are_strings_and_missing_rewards_are_none() {
+        let raw = json!({"miner_stats":{"one":{"u":"bob","sft":"Arduino","id":42}}});
+        let workers = public_workers(&raw);
+        assert_eq!(workers[0]["rig"], "42");
+        assert_eq!(workers[0]["miner"], "Arduino");
+        assert!(pending_rewards(&raw).is_none());
+        let raw = json!({"balances":{"constructor":1.5,"bad":"x"}});
+        assert_eq!(pending_rewards(&raw), Some(json!({"constructor":1.5})));
+    }
+    #[test]
+    fn null_host_readings_survive_a_history_round_trip() {
+        let p = Point {
+            cpu: Some(f32::NAN).filter(|x| x.is_finite()),
+            ..point(1)
+        };
+        let saved = serde_json::to_vec(&[p]).unwrap();
+        let loaded: Vec<Point> = serde_json::from_slice(&saved).unwrap();
+        assert_eq!(loaded, [p]);
+    }
+    #[tokio::test]
+    async fn rewards_unavailable_when_pool_omits_balances() {
+        let app = Arc::new(App {
+            snapshot: RwLock::new(Snapshot {
+                updated: now(),
+                ..Snapshot::default()
+            }),
+            history: RwLock::new(VecDeque::new()),
+        });
+        assert_eq!(
+            rewards(State(app)).await.unwrap_err().0,
+            StatusCode::SERVICE_UNAVAILABLE
+        );
     }
     #[test]
     fn worker_adapter_whitelists_fields_and_converts_timestamps() {

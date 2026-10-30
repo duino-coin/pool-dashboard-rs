@@ -41,7 +41,8 @@ const state = {
     historyMeta: null,
     rangeMs: null,
     workers: [],
-    rewards: {},
+    // a Map, not an object: usernames like "constructor" must not hit prototype members
+    rewards: new Map(),
     searchTimeout: null,
 };
 
@@ -336,12 +337,12 @@ function fetchStatistics() {
             els.acceptRate.textContent = Number.isFinite(data.acceptRate) ? data.acceptRate.toFixed(2) + "%" : "—";
             els.sharesSub.textContent =
                 `${formatCount(data.acceptedShares)} ok · ${formatCount(data.rejectedShares)} bad · connected workers`;
-            els.cpu.textContent = data.cpu.toFixed(1) + "%";
-            els.ram.textContent = data.ram.toFixed(1) + "%";
+            els.cpu.textContent = Number.isFinite(data.cpu) ? data.cpu.toFixed(1) + "%" : "—";
+            els.ram.textContent = Number.isFinite(data.ram) ? data.ram.toFixed(1) + "%" : "—";
             els.cpuTemp.textContent = Number.isFinite(data.cpuTemp) ? data.cpuTemp.toFixed(1) + "°C" : "—";
 
             els.syncInfo.textContent = data.lastSyncAt
-                ? `sync #${data.syncCount} at ${new Date(data.lastSyncAt).toLocaleTimeString()}`
+                ? `last sync at ${new Date(data.lastSyncAt).toLocaleTimeString()}`
                 : "sync status unavailable";
             els.lastUpdated.textContent = "updated " + new Date().toLocaleTimeString();
 
@@ -442,7 +443,7 @@ function renderLeaderboard() {
         tr.dataset.username = u.username;
         tr.title = `Show ${u.username}'s workers`;
         const total = u.accepted + u.rejected;
-        const pending = state.rewards[u.username];
+        const pending = state.rewards.get(u.username);
         td(tr, String(i + 1), "num");
         td(tr, u.username, "user");
         td(tr, u.rigs.toLocaleString(), "num");
@@ -461,13 +462,16 @@ function fetchRewards() {
             return r.json();
         })
         .then((rewards) => {
-            state.rewards = rewards;
-            const total = Object.values(rewards).reduce((sum, value) => sum + value, 0);
+            state.rewards = new Map(
+                Object.entries(rewards).filter(([, value]) => Number.isFinite(value))
+            );
+            let total = 0;
+            for (const value of state.rewards.values()) total += value;
             els.rewardsSummary.textContent = `${formatDuco(total)} DUCO pending`;
             renderLeaderboard();
         })
         .catch(() => {
-            state.rewards = {};
+            state.rewards = new Map();
             els.rewardsSummary.textContent = "Pending rewards unavailable";
             renderLeaderboard();
         });

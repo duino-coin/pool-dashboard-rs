@@ -58,15 +58,16 @@ omit worker IPs, wallet IDs, chip IDs, IoT readings and mining passwords.
 - Pending rewards come from the pool's `balances`: DUCO earned per user that has
   not been accepted by a server sync yet. `/rewards` returns them as-is, including
   users who are no longer connected; the leaderboard displays each user's pending
-  DUCO and the summary shows the pool-wide total.
+  DUCO and the summary shows the pool-wide total. Pools that do not publish
+  `balances` return HTTP 503 from `/rewards`, shown as unavailable.
 - CPU, RAM and temperature are sampled on the dashboard host. Uptime is read from
   a local process named `duco-pool-rs`; run one pool instance per host for this
   lookup. The process is found once and then tracked by PID; the process list is
   only rescanned when that PID exits. Missing process/sensor readings show as
   unavailable.
-- Sync status shows the number and time of the pool's last accepted sync, from
-  `last_sync_count` and `last_sync_time`. It is unavailable until the first one,
-  and with pool versions that do not publish these fields.
+- Sync status shows the time of the pool's last accepted sync, from
+  `last_sync_time`. It is unavailable until the first one, and with pool
+  versions that do not publish this field.
 - `/statistics`, `/workers` and `/rewards` return HTTP 503 when the last
   successful pool poll is more than 20 seconds old. Pool API response bodies and
   on-disk JSON inputs are capped at 16 MiB. History retains at most 20,000 points
