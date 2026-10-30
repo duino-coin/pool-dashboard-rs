@@ -99,7 +99,7 @@ fn public_workers(raw: &Value) -> Vec<Value> {
                 "username":w["u"], "hashrate":number(w,"h"), "sharetime":w["s"],
                 "accepted":number(w,"a"), "rejected":number(w,"r"), "difficulty":w["d"],
                 "miner":w["sft"], "rig":w["id"], "lastSeen":number(w,"t")*1000.,
-                "ping":w["pg"], "reward":number(w,"rw")
+                "ping":w["pg"]
             })
         })
         .collect()
@@ -165,6 +165,7 @@ fn load_history(path: &Path) -> VecDeque<Point> {
 struct Snapshot {
     stats: Value,
     workers: Vec<Value>,
+    rewards: Value,
     updated: u64,
 }
 struct App {
@@ -228,13 +229,7 @@ async fn rewards(State(app): State<Shared>) -> ApiResult {
             "Pool reward data is unavailable or stale",
         ));
     }
-    let mut totals = HashMap::<String, f64>::new();
-    for worker in &s.workers {
-        if let Some(username) = worker["username"].as_str() {
-            *totals.entry(username.to_owned()).or_default() += number(worker, "reward");
-        }
-    }
-    Ok(Json(json!(totals)))
+    Ok(Json(s.rewards.clone()))
 }
 
 struct HostMetrics {
@@ -242,7 +237,6 @@ struct HostMetrics {
     ram: f64,
     temp: Option<f64>,
     uptime: Option<u64>,
-    pool_pid: Option<Pid>,
 }
 /// samples the dashboard host; the pool process is looked up by name once and then
 /// refreshed by PID, the full process table is only rescanned when that PID goes away
@@ -292,48 +286,8 @@ impl HostMonitor {
                 .pool_pid
                 .and_then(|pid| self.system.process(pid))
                 .map(|p| p.run_time()),
-            pool_pid: self.pool_pid,
         }
     }
-}
-
-/// reads the last "Successfully synced N" line the running pool process logged
-async fn sync_status(service: &str, pid: Pid) -> (Option<u64>, Option<u64>) {
-    let (mut count, mut at) = (None, None);
-    let Ok(out) = tokio::process::Command::new("journalctl")
-        .args([
-            "-u",
-            service,
-            "-n",
-            "40",
-            "--no-pager",
-            "-o",
-            "json",
-            &format!("_PID={pid}"),
-        ])
-        .output()
-        .await
-    else {
-        return (count, at);
-    };
-    for line in String::from_utf8_lossy(&out.stdout).lines() {
-        let Ok(entry) = serde_json::from_str::<Value>(line) else {
-            continue;
-        };
-        let Some(n) = entry["MESSAGE"]
-            .as_str()
-            .and_then(|m| m.split_once("Successfully synced "))
-            .map(|(_, n)| n)
-        else {
-            continue;
-        };
-        count = n.trim().parse::<u64>().ok();
-        at = entry["__REALTIME_TIMESTAMP"]
-            .as_str()
-            .and_then(|x| x.parse::<u64>().ok())
-            .map(|x| x / 1000);
-    }
-    (count, at)
 }
 
 /// adds a point unless the clock went backwards, which would break time ordering
@@ -346,7 +300,7 @@ fn record_point(history: &mut VecDeque<Point>, point: Point) {
     trim_history(history, t);
 }
 
-async fn poll(app: Shared, config: Value, history_path: PathBuf, service: Option<String>) {
+async fn poll(app: Shared, config: Value, history_path: PathBuf) {
     let client = reqwest::Client::builder()
         .no_proxy()
         .redirect(reqwest::redirect::Policy::none())
@@ -364,10 +318,14 @@ async fn poll(app: Shared, config: Value, history_path: PathBuf, service: Option
         };
         let rows = public_workers(&raw);
         let metrics = host.sample();
-        let (sync_count, sync_at) = match (metrics.pool_pid, service.as_deref()) {
-            (Some(pid), Some(service)) => sync_status(service, pid).await,
-            _ => (None, None),
-        };
+        // pools without these fields predate them; shown as unavailable
+        let rewards = raw
+            .get("balances")
+            .filter(|b| b.is_object())
+            .cloned()
+            .unwrap_or_else(|| json!({}));
+        // unix secs, 0 until the pool's first accepted sync
+        let last_sync_time = raw["last_sync_time"].as_u64().filter(|&t| t > 0);
         let accepted: f64 = rows.iter().map(|w| number(w, "accepted")).sum();
         let rejected: f64 = rows.iter().map(|w| number(w, "rejected")).sum();
         let users: HashSet<_> = rows.iter().filter_map(|w| w["username"].as_str()).collect();
@@ -390,8 +348,8 @@ async fn poll(app: Shared, config: Value, history_path: PathBuf, service: Option
             "ram": metrics.ram,
             "cpuTemp": metrics.temp,
             "uptime": metrics.uptime,
-            "syncCount": sync_count,
-            "lastSyncAt": sync_at,
+            "syncCount": last_sync_time.and(raw["last_sync_count"].as_u64()),
+            "lastSyncAt": last_sync_time.map(|t| t * 1000),
         });
         record_point(
             &mut *app.history.write().await,
@@ -408,6 +366,7 @@ async fn poll(app: Shared, config: Value, history_path: PathBuf, service: Option
         *app.snapshot.write().await = Snapshot {
             stats,
             workers: rows,
+            rewards,
             updated: stamp,
         };
         polls_since_save += 1;
@@ -448,12 +407,7 @@ async fn main() -> anyhow::Result<()> {
         snapshot: RwLock::new(Snapshot::default()),
         history: RwLock::new(load_history(&history_path)),
     });
-    let poller = tokio::spawn(poll(
-        app.clone(),
-        config,
-        history_path.clone(),
-        std::env::var("POOL_SERVICE").ok(),
-    ));
+    let poller = tokio::spawn(poll(app.clone(), config, history_path.clone()));
     let router = Router::new()
         .route("/statistics", get(statistics))
         .route("/workers", get(workers))
@@ -503,30 +457,6 @@ mod tests {
             ram: 0.,
             cpu_temp: None,
         }
-    }
-    #[tokio::test]
-    async fn pending_rewards_sum_workers_by_username_and_reject_stale_data() {
-        let raw = json!({"miner_stats":{
-            "one":{"u":"alice","rw":1.25},
-            "two":{"u":"alice","rw":2.5},
-            "three":{"u":"bob","rw":0.5},
-            "four":{"u":"carol"}
-        }});
-        let app = Arc::new(App {
-            snapshot: RwLock::new(Snapshot {
-                workers: public_workers(&raw),
-                updated: now(),
-                ..Snapshot::default()
-            }),
-            history: RwLock::new(VecDeque::new()),
-        });
-        let Json(totals) = rewards(State(app.clone())).await.unwrap();
-        assert_eq!(totals, json!({"alice":3.75,"bob":0.5,"carol":0.0}));
-        app.snapshot.write().await.updated = 0;
-        assert_eq!(
-            rewards(State(app)).await.unwrap_err().0,
-            StatusCode::SERVICE_UNAVAILABLE
-        );
     }
     #[test]
     fn worker_adapter_whitelists_fields_and_converts_timestamps() {

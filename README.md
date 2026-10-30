@@ -33,7 +33,6 @@ Settings use environment variables:
 | `POOL_CONFIG` | `config/config.json` | Pool configuration containing the API port and secret |
 | `DASHBOARD_BIND` | `127.0.0.1:6031` | Dashboard listen address; use `0.0.0.0:6030` for LAN access on port 6030 |
 | `DASHBOARD_HISTORY` | `dashboard-history.json` next to `POOL_CONFIG` | History file; its parent directory must exist and be writable |
-| `POOL_SERVICE` | unset | Optional systemd unit name for successful-sync status |
 
 For example, to preserve an existing dashboard on port 6030, change the pool's
 `dashboard_port` to 6032 and restart the pool, then run:
@@ -42,7 +41,6 @@ For example, to preserve an existing dashboard on port 6030, change the pool's
 POOL_CONFIG=/path/to/pool/config/config.json \
 DASHBOARD_BIND=0.0.0.0:6030 \
 DASHBOARD_HISTORY=/path/to/state/history.json \
-POOL_SERVICE=duco-pool.service \
 ./dashboard-rs/target/release/duco-pool-dashboard
 ```
 
@@ -57,16 +55,18 @@ omit worker IPs, wallet IDs, chip IDs, IoT readings and mining passwords.
 
 - Share counters and acceptance rate describe currently connected workers; they
   can decrease when workers reconnect. Empty share totals show an unavailable rate.
-- Pending rewards come from `miner_stats[CONN_ID].rw`. `/rewards` sums these
-  balances by username; the leaderboard displays each user's pending DUCO and
-  the summary shows the total across connected workers.
+- Pending rewards come from the pool's `balances`: DUCO earned per user that has
+  not been accepted by a server sync yet. `/rewards` returns them as-is, including
+  users who are no longer connected; the leaderboard displays each user's pending
+  DUCO and the summary shows the pool-wide total.
 - CPU, RAM and temperature are sampled on the dashboard host. Uptime is read from
   a local process named `duco-pool-rs`; run one pool instance per host for this
   lookup. The process is found once and then tracked by PID; the process list is
   only rescanned when that PID exits. Missing process/sensor readings show as
   unavailable.
-- Sync status requires `journalctl`, `POOL_SERVICE` and permission to read that
-  unit's logs. Missing status is shown as unavailable.
+- Sync status shows the number and time of the pool's last accepted sync, from
+  `last_sync_count` and `last_sync_time`. It is unavailable until the first one,
+  and with pool versions that do not publish these fields.
 - `/statistics`, `/workers` and `/rewards` return HTTP 503 when the last
   successful pool poll is more than 20 seconds old. Pool API response bodies and
   on-disk JSON inputs are capped at 16 MiB. History retains at most 20,000 points

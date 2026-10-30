@@ -10,8 +10,6 @@ WorkingDirectory=/opt/duco-pool
 Environment=POOL_CONFIG=/opt/duco-pool/config/config.json
 Environment=DASHBOARD_BIND=127.0.0.1:6031
 Environment=DASHBOARD_HISTORY=/opt/duco-pool/config/dashboard-history.json
-# Optional: set this to your pool unit, with journal read permission for User.
-# Environment=POOL_SERVICE=duco-pool.service
 ExecStart=/opt/duco-pool/dashboard-rs/target/release/duco-pool-dashboard
 Restart=on-failure
 RestartSec=5
