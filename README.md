@@ -15,8 +15,8 @@ configuration. Never paste the key into frontend code or a public URL.
 From the repository root:
 
 ```sh
-cargo build --release --locked --manifest-path dashboard-rs/Cargo.toml
-./dashboard-rs/target/release/duco-pool-dashboard
+cargo build --release --locked
+POOL_CONFIG=/path/to/pool/config/config.json ./target/release/duco-pool-dashboard
 ```
 
 Open <http://127.0.0.1:6031>. The dashboard polls the pool's configured
@@ -41,7 +41,7 @@ For example, to preserve an existing dashboard on port 6030, change the pool's
 POOL_CONFIG=/path/to/pool/config/config.json \
 DASHBOARD_BIND=0.0.0.0:6030 \
 DASHBOARD_HISTORY=/path/to/state/history.json \
-./dashboard-rs/target/release/duco-pool-dashboard
+./target/release/duco-pool-dashboard
 ```
 
 [duco-dashboard.service](duco-dashboard.service) is an example systemd unit. Edit
@@ -85,11 +85,11 @@ omit worker IPs, wallet IDs, chip IDs, IoT readings and mining passwords.
 ## Checks
 
 ```sh
-(cd dashboard-rs && typos)
-cargo fmt --check --manifest-path dashboard-rs/Cargo.toml
-cargo test --locked --manifest-path dashboard-rs/Cargo.toml
-cargo clippy --release --locked --all-targets --manifest-path dashboard-rs/Cargo.toml -- -D warnings
+typos
+cargo fmt --check
+cargo test --locked
+cargo clippy --release --locked --all-targets -- -D warnings
 ```
 
 Chart.js 4.4.1 is bundled under its [MIT license](assets/vendor/LICENSE.chartjs.md).
-The dashboard companion uses the repository's AGPL-3.0 license.
+The dashboard companion is licensed under the [AGPL-3.0](LICENSE).

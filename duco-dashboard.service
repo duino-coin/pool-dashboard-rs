@@ -10,7 +10,7 @@ WorkingDirectory=/opt/duco-pool
 Environment=POOL_CONFIG=/opt/duco-pool/config/config.json
 Environment=DASHBOARD_BIND=127.0.0.1:6031
 Environment=DASHBOARD_HISTORY=/opt/duco-pool/config/dashboard-history.json
-ExecStart=/opt/duco-pool/dashboard-rs/target/release/duco-pool-dashboard
+ExecStart=/opt/pool-dashboard-rs/target/release/duco-pool-dashboard
 Restart=on-failure
 RestartSec=5
 KillSignal=SIGINT
