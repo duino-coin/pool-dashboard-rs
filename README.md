@@ -92,4 +92,4 @@ cargo clippy --release --locked --all-targets -- -D warnings
 ```
 
 Chart.js 4.4.1 is bundled under its [MIT license](assets/vendor/LICENSE.chartjs.md).
-The dashboard companion is licensed under the [AGPL-3.0](LICENSE).
+The dashboard companion is licensed under the [AGPL-3.0](LICENSE). Courtesy of [ZL1LAC](https://github.com/ZL1LAC)
