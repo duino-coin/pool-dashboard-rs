@@ -60,7 +60,10 @@ omit worker IPs, wallet IDs, chip IDs, IoT readings and mining passwords.
   users who are no longer connected; the leaderboard displays each user's pending
   DUCO and the summary shows the pool-wide total. Pools that do not publish
   `balances` return HTTP 503 from `/rewards`, shown as unavailable.
-- CPU, RAM and temperature are sampled on the dashboard host. Uptime is read from
+- CPU, RAM and temperature are sampled on the dashboard host. Pool RAM shows the
+  local pool process resident memory in MiB, separately from host RAM percentage.
+  It is exposed as `processRamMb` in statistics and chart history; older history
+  points without it display a gap. Uptime is read from
   a local process named `duco-pool-rs`; run one pool instance per host for this
   lookup. The process is found once and then tracked by PID; the process list is
   only rescanned when that PID exits. Missing process/sensor readings show as

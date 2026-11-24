@@ -19,6 +19,7 @@ const els = {
     sharesSub: $("shares-sub"),
     cpu: $("cpu"),
     ram: $("ram"),
+    processRam: $("process-ram"),
     cpuTemp: $("cpu-temp"),
     historyRange: $("history-range"),
     syncInfo: $("sync-info"),
@@ -173,6 +174,15 @@ function makeChart(canvasId, seriesDefs, yTickFormat, yMax) {
                         border: { display: false },
                     },
                 } : {}),
+                ...(seriesDefs.some((s) => s.yAxisID === "processMemory") ? {
+                    processMemory: {
+                        position: "right",
+                        beginAtZero: true,
+                        ticks: { maxTicksLimit: 5, color: c.muted, font: { size: 11 }, callback: (v) => v + " MiB" },
+                        grid: { drawOnChartArea: false },
+                        border: { display: false },
+                    },
+                } : {}),
                 y: {
                     beginAtZero: true,
                     max: yMax,
@@ -237,6 +247,7 @@ function initCharts() {
         [
             { label: "CPU", colorVar: "--s4", format: (v) => v.toFixed(1) + "%" },
             { label: "RAM", colorVar: "--s5", format: (v) => v.toFixed(1) + "%" },
+            { label: "Pool RAM", colorVar: "--s2", yAxisID: "processMemory", format: (v) => v.toFixed(1) + " MiB" },
             { label: "CPU temp", colorVar: "--s1", yAxisID: "temperature", format: (v) => v.toFixed(1) + "°C" },
         ],
         (v) => v + "%",
@@ -288,6 +299,7 @@ function updateCharts() {
     setSeries(charts.system, points, labels, [
         (p) => (p.cpu != null ? p.cpu : null),
         (p) => (p.ram != null ? p.ram : null),
+        (p) => (Number.isFinite(p.processRamMb) ? p.processRamMb : null),
         (p) => (Number.isFinite(p.cpuTemp) ? p.cpuTemp : null),
     ]);
 
@@ -338,6 +350,7 @@ function fetchStatistics() {
             els.sharesSub.textContent =
                 `${formatCount(data.acceptedShares)} ok · ${formatCount(data.rejectedShares)} bad · connected workers`;
             els.cpu.textContent = Number.isFinite(data.cpu) ? data.cpu.toFixed(1) + "%" : "—";
+            els.processRam.textContent = Number.isFinite(data.processRamMb) ? data.processRamMb.toFixed(1) + " MiB" : "—";
             els.ram.textContent = Number.isFinite(data.ram) ? data.ram.toFixed(1) + "%" : "—";
             els.cpuTemp.textContent = Number.isFinite(data.cpuTemp) ? data.cpuTemp.toFixed(1) + "°C" : "—";
 

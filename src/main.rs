@@ -139,6 +139,7 @@ struct Point {
     // optional: a non-finite reading is saved as null, which a plain float could not load back
     cpu: Option<f32>,
     ram: Option<f64>,
+    process_ram_mb: Option<f64>,
     cpu_temp: Option<f64>,
 }
 /// drops points older than a day, then the oldest beyond the point cap;
@@ -262,6 +263,7 @@ async fn rewards(State(app): State<Shared>) -> ApiResult {
 struct HostMetrics {
     cpu: Option<f32>,
     ram: Option<f64>,
+    process_ram_mb: Option<f64>,
     temp: Option<f64>,
     uptime: Option<u64>,
 }
@@ -312,6 +314,10 @@ impl HostMonitor {
             )
             .filter(|x| x.is_finite()),
             temp: temperature::cpu_temperature(),
+            process_ram_mb: self
+                .pool_pid
+                .and_then(|pid| self.system.process(pid))
+                .map(|p| p.memory() as f64 / 1_048_576.),
             uptime: self
                 .pool_pid
                 .and_then(|pid| self.system.process(pid))
@@ -372,6 +378,7 @@ async fn poll(app: Shared, config: Value, history_path: PathBuf) {
             "acceptRate": (accepted + rejected > 0.).then(|| 100. * accepted / (accepted + rejected)),
             "cpu": metrics.cpu,
             "ram": metrics.ram,
+            "processRamMb": metrics.process_ram_mb,
             "cpuTemp": metrics.temp,
             "uptime": metrics.uptime,
             "lastSyncAt": last_sync_time.map(|t| t * 1000),
@@ -385,6 +392,7 @@ async fn poll(app: Shared, config: Value, history_path: PathBuf) {
                 workers: rows.len(),
                 cpu: metrics.cpu,
                 ram: metrics.ram,
+                process_ram_mb: metrics.process_ram_mb,
                 cpu_temp: metrics.temp,
             },
         );
@@ -480,8 +488,21 @@ mod tests {
             workers: 0,
             cpu: Some(0.),
             ram: Some(0.),
+            process_ram_mb: None,
             cpu_temp: None,
         }
+    }
+    #[test]
+    fn history_accepts_older_points_and_preserves_pool_ram() {
+        let mut value = serde_json::to_value(point(1000)).unwrap();
+        value.as_object_mut().unwrap().remove("processRamMb");
+        let old: Point = serde_json::from_value(value).unwrap();
+        assert_eq!(old.process_ram_mb, None);
+        let mut measured = old;
+        measured.process_ram_mb = Some(18.5);
+        let encoded = serde_json::to_value(measured).unwrap();
+        assert_eq!(encoded["processRamMb"], 18.5);
+        assert_eq!(serde_json::from_value::<Point>(encoded).unwrap(), measured);
     }
     #[test]
     fn worker_text_fields_are_strings_and_missing_rewards_are_none() {
